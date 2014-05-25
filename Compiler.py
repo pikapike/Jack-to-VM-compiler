@@ -1,5 +1,5 @@
 
-# Jack to VM compiler Python program (in progress)
+# Jack to VM compiler Python program
 # by pikapike
 
 # import compiler-related stuff
@@ -10,10 +10,10 @@ import re
 # a named tuple (mainly for testing)
 Token = collections.namedtuple('Token', ['typ', 'value', 'line', 'column', 'token_number'])
 
-# the Tokenizer
+# the Tokenizer (still those pesky comments)
 class JackTokenizer:
-    def __init__(self, file): # initialize
-        self.file = open(file,"r")
+    def __init__(self, file):
+        self.file = open(file, "r")
         self.file.seek(0, 0)
         self.filestring = self.file.read()
         self.file.seek(0, 0)
@@ -21,7 +21,7 @@ class JackTokenizer:
         self.tokens = []
         self.token = None
         self.i = 0
-    def somefunction(self, something): # helper function for antiComment
+    def somefunction(self, something):
         try:
             if self.filestring[self.i]+self.filestring[self.i+1] == something:
                 return True
@@ -29,7 +29,7 @@ class JackTokenizer:
                 return False
         except:
             return False
-    def antiComment(self): # gets rid of comments
+    def antiComment(self):
         multlinestr = ''
         linecomment = False
         multilinecomment = False
@@ -50,7 +50,7 @@ class JackTokenizer:
                 multlinestr += self.filestring[self.i]
             self.i += 1
         self.filestring = multlinestr.rstrip()
-    def tokenize(self): # the tokenizer command
+    def tokenize(self):
         keywords = {'class', 'constructor', 'function', 'method', 'field', 'static', 'var', 'int', 'char', 'boolean', 'void', 'true', 'false', 'null', 'this', 'let', 'do', 'if', 'else', 'while', 'return'}
         token_specification = [
 	    ('SYMBOL', r'[\{\}\(\)\[\].,;\+\-\*\/&|<>=~]'), # Jack symbols
@@ -83,22 +83,22 @@ class JackTokenizer:
             mo = get_token(self.filestring, pos)
         if pos != len(self.filestring):
             raise RuntimeError('Unexpected character %r on line %d' %(line))
-    def generateTokens(self): # Generates tokens into a list
+    def generateTokens(self):
         for token in self.tokenize():
     		self.tokens.append(token)
-    def printTokens(self): # Prints tokens (for testing)
+    def printTokens(self):
         for token in self.tokenize():
             print token
-    def advance(self): # Moves to the next token
+    def advance(self):
         try:
             self.token_number += 1
             self.token = self.tokens[self.token_number]
             return True
         except:
             return False
-    def tokenType(self): # Returns token type
+    def tokenType(self):
         return self.token.typ
-    def symbol(self): 
+    def symbol(self):
         return self.token[1]
     def identifier(self):
         return self.token[1]
@@ -107,15 +107,15 @@ class JackTokenizer:
     def stringVal(self):
         return str(self.token[1])
 
-class CompilationEngine: # Translates things into VM code
-    def __init__(self, tokenlist, outputfile): # Initialization
+class CompilationEngine:
+    def __init__(self, tokenlist, outputfile):
         self.tokenlist = tokenlist
         self.outfile = outputfile
         self.token_number = 0
         self.ops = ('+', '-', '*', '/', '&', '|', '<', '>', '=')
         self.unaryOps = ('-', '~')
         self.keywordConstants = ('true', 'false', 'null', 'this')
-    def useToken(self): # helper function
+    def useToken(self):
         while (self.tokenlist[self.token_number][0] == 'NEWLINE') or (self.tokenlist[self.token_number][0] == 'SKIP'):
             self.token_number += 1
             print "skip!"
@@ -123,13 +123,13 @@ class CompilationEngine: # Translates things into VM code
         print token[0], self.token_number
         self.token_number += 1
         return token[0]
-    def indicateToken(self): # another helper function
+    def indicateToken(self):
         while (self.tokenlist[self.token_number][0] == 'NEWLINE') or (self.tokenlist[self.token_number][0] == 'SKIP'):
             self.token_number += 1
             print "skip!"
         print self.tokenlist[self.token_number][1]
         return self.tokenlist[self.token_number][1]
-    def getTokenType(self): # etc.
+    def getTokenType(self):
         return self.tokenlist[self.token_number][0]
     def boolToken(self, string):
         print  self.indicateToken()     
@@ -141,7 +141,7 @@ class CompilationEngine: # Translates things into VM code
         else:
             return '<keyword> ' + self.useToken() + ''' </keyword>
             '''
-    def compileClass(self): # Compiles a whole class. The other compile------- functions are called like a tree until the 'leaves'.
+    def compileClass(self):
         xmlstr = '''<class>
         <keyword> ''' + self.useToken() + ''' </keyword>
         <identifier> ''' + self.useToken() + '''</identifier>
@@ -149,6 +149,7 @@ class CompilationEngine: # Translates things into VM code
         '''
         print self.token_number
         while self.indicateToken() != '}':
+            print "I know you're endless looping!!!"
             if (self.boolToken('constructor')) or (self.boolToken('function')) or (self.boolToken('method')):
                 xmlstr += self.compileSubroutine()
             elif (self.boolToken('field')) or (self.boolToken('static')):
@@ -165,6 +166,7 @@ class CompilationEngine: # Translates things into VM code
         ''' + self.compileType() + '<identifier> ' + self.useToken() + ''' </identifier>
         '''
         while self.indicateToken() != ';':
+            print "Cuckoo!"
             xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
             <identifier> ''' + self.useToken() + ''' </identifier>
             '''
@@ -189,6 +191,7 @@ class CompilationEngine: # Translates things into VM code
         ''' + self.compileVarDec() + self.compileStatements() + '''<symbol> ''' + self.useToken() + ''' </symbol>
         </subroutineDec>
         '''
+        return xmlstr
     def compileParameterList(self):
         xmlstr = '''<parameterList>
         '''
@@ -196,6 +199,7 @@ class CompilationEngine: # Translates things into VM code
             xmlstr += self.compileType() + '<identifier> ' + self.useToken() + '''</identifier>
             '''
         while self.indicateToken() != ')':
+            print "Woohoo!"
             xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
             ''' + self.compileType() + '<identifier> '  + self.useToken() + '''</identifier>
             '''
@@ -208,6 +212,7 @@ class CompilationEngine: # Translates things into VM code
         ''' + self.compileType() + '<identifier> ' + self.useToken() + ''' </identifier>
         '''
         while self.indicateToken() != ';':
+            print "Doops?"
             xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
             <identifier> ''' + self.useToken() + ''' </identifier>
             '''
@@ -219,6 +224,7 @@ class CompilationEngine: # Translates things into VM code
         xmlstr = '''<statements>
         '''
         while self.indicateToken() != '}':
+            print self.token_number, self.indicateToken()
             if self.indicateToken() == 'let':
                 xmlstr += self.compileLet()
             elif self.indicateToken() == 'if':
@@ -235,7 +241,8 @@ class CompilationEngine: # Translates things into VM code
     def compileDo(self):
         xmlstr = '''<doStatement>
         <keyword> ''' + self.useToken() + '''</keyword>
-        ''' + self.compileTerm() + '''</doStatement>
+        ''' + self.compileTerm() + '<symbol> ' + self.useToken() + ''' </symbol>
+        </doStatement>
         '''
         return xmlstr
     def compileLet(self):
@@ -243,6 +250,7 @@ class CompilationEngine: # Translates things into VM code
         <keyword> ''' + self.useToken() + ''' </keyword>
         <identifier> ''' + self.useToken() + ''' </identifier>
         '''
+        print self.indicateToken()
         if self.indicateToken() != '=':
             xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
             ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
@@ -293,6 +301,7 @@ class CompilationEngine: # Translates things into VM code
         xmlstr = '''<expression>
         ''' + self.compileTerm()
         while self.indicateToken() in self.ops:
+            print "o_0"
             xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
             ''' + self.compileTerm()
         xmlstr += '''</expression>
@@ -343,19 +352,24 @@ class CompilationEngine: # Translates things into VM code
         if self.indicateToken() != ')':
             xmlstr += self.compileExpression()
         while self.indicateToken() != ')':
+            print ["l", "i", "s", "t"]
             xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
             ''' + self.compileExpression()
         xmlstr += '''</parameterList>
         '''
         return xmlstr
 
-def tokenize(file): # the function that puts it all together
+def tokenize(file):
+    print "StartTest"
     tokenizer = JackTokenizer(file)
+    print "TEST0"
     tokenizer.antiComment()
+    print "TEST1"
     tokenizer.printTokens()
     tokenizer.generateTokens()
     advancing = True
     tokenizer.advance()
+    print "TEST2"
     while advancing:
         if tokenizer.tokenType() == 'KEYWORD':
             print tokenizer.symbol()
@@ -370,7 +384,9 @@ def tokenize(file): # the function that puts it all together
         advancing = tokenizer.advance()
     compilation = CompilationEngine(tokenizer.tokens, "asdf")
     print compilation.compileClass()
-tokenize("Square.jack") # compile some Jack things
+    
+print "Hello! We are sdalfkjsdlfsad"    
+tokenize("Square.jack")
 tokenize("SquareGame.jack")
 tokenize("Main.jack") 
 
