@@ -10,7 +10,7 @@ import re
 # a named tuple (mainly for testing)
 Token = collections.namedtuple('Token', ['typ', 'value', 'line', 'column', 'token_number'])
 
-# the Tokenizer (still those pesky comments)
+# the Tokenizer
 class JackTokenizer:
     def __init__(self, file):
         self.file = open(file, "r")
@@ -53,7 +53,7 @@ class JackTokenizer:
     def tokenize(self):
         keywords = {'class', 'constructor', 'function', 'method', 'field', 'static', 'var', 'int', 'char', 'boolean', 'void', 'true', 'false', 'null', 'this', 'let', 'do', 'if', 'else', 'while', 'return'}
         token_specification = [
-	    ('SYMBOL', r'[\{\}\(\)\[\].,;\+\-\*\/&|<>=~]'), # Jack symbols
+	    ('SYMBOL', r'[\{\}\(\)\[\]\.\,\;\+\-\*\/\&\|\<\>\=\~]'), # Jack symbols
 	    ('INT_CONST', r'\d+(\.\d*)?'), # Jack decimal numbers (warning: no test for up to 32767)
           ('IDENTIFIER', r'[A-Za-z_][A-Za-z0-9_]*'),   # Identifiers
           ('NEWLINE', r'[\n\r]'),          # Line endings
@@ -97,7 +97,7 @@ class JackTokenizer:
         except:
             return False
     def tokenType(self):
-        return self.token.typ
+        return self.token[0]
     def symbol(self):
         return self.token[1]
     def identifier(self):
@@ -130,23 +130,53 @@ class CompilationEngine:
         print self.tokenlist[self.token_number][1]
         return self.tokenlist[self.token_number][1]
     def getTokenType(self):
+        while (self.tokenlist[self.token_number][0] == 'NEWLINE') or (self.tokenlist[self.token_number][0] == 'SKIP'):
+            self.token_number += 1
+            print "skip!"
         return self.tokenlist[self.token_number][0]
     def boolToken(self, string):
         print  self.indicateToken()     
         return self.indicateToken() == string
-    def compileType(self):
+    def compileKeyword(self):
+        if self.getTokenType() == 'KEYWORD':
+            return '<keyword> ' + self.useToken() + ''' </keyword>
+            '''
+        else:
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+    def compileIdentifier(self):
         if self.getTokenType() == 'IDENTIFIER':
             return '<identifier> ' + self.useToken() + ''' </identifier>
             '''
         else:
-            return '<keyword> ' + self.useToken() + ''' </keyword>
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+    def compileSymbol(self):
+        if self.getTokenType() == 'SYMBOL':
+            return '<symbol> ' + self.useToken() + ''' </symbol>
             '''
+        else:
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+    def compileIntegerConstant(self):
+        if self.getTokenType() == 'INT_CONST':
+            return '<integerConstant> ' + self.useToken() + ''' </integerConstant>
+            '''
+        else:
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+    def compileStringConstant(self):
+        if self.getTokenType() == 'STRING_CONST':
+            return '<stringConstant> ' + self.useToken() + ''' </stringConstant>
+            '''
+        else:
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+    def compileType(self):
+        if self.getTokenType() == 'IDENTIFIER':
+            return self.compileIdentifier()
+        elif (self.indicateToken() == 'int') or (self.indicateToken() == 'char') or (self.indicateToken() == 'boolean'):
+            return self.compileKeyword()
+        else:
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
     def compileClass(self):
         xmlstr = '''<class>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        <identifier> ''' + self.useToken() + '''</identifier>
-        <symbol> '''+ self.useToken() + ''' </symbol>
-        '''
+        ''' + self.compileKeyword() + self.compileIdentifier() + self.compileSymbol()
         print self.token_number
         while self.indicateToken() != '}':
             print "I know you're endless looping!!!"
@@ -156,78 +186,80 @@ class CompilationEngine:
                 xmlstr += self.compileClassVarDec()
             else:
                 print 1 % 0
-        xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-        </class>
+        xmlstr += self.compileSymbol() + '''</class>
         '''
         return xmlstr
     def compileClassVarDec(self):
         xmlstr = '''<classVarDec>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        ''' + self.compileType() + '<identifier> ' + self.useToken() + ''' </identifier>
-        '''
+        ''' + self.compileKeyword() + self.compileType() + self.compileIdentifier()
         while self.indicateToken() != ';':
             print "Cuckoo!"
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            <identifier> ''' + self.useToken() + ''' </identifier>
-            '''
-        xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-        </classVarDec>
+            xmlstr += self.compileSymbol() + self.compileIdentifier()
+        if self.indicateToken() != ';':
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+        xmlstr += self.compileSymbol() + '''</classVarDec>
         '''
         return xmlstr
     def compileSubroutine(self):
         xmlstr = '''<subroutineDec>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        '''
+        ''' + self.compileKeyword()
         if self.indicateToken() == 'void':
-            xmlstr += '<keyword> ' + self.useToken() + ''' </keyword>
-        '''
+            xmlstr += self.compileKeyword()
         else:
             xmlstr += self.compileType()
-        xmlstr += '<identifier> ' + self.useToken() + '''</identifier>
-        <symbol> ''' + self.useToken() + ''' </symbol>
-        ''' + self.compileParameterList() + '<symbol> ' + self.useToken() + ''' </symbol>
-        <subroutineBody>
-        <symbol> ''' + self.useToken() + ''' </symbol>
-        ''' + self.compileVarDec() + self.compileStatements() + '''<symbol> ''' + self.useToken() + ''' </symbol>
-        </subroutineDec>
+        xmlstr += self.compileIdentifier() + self.compileSymbol() + self.compileParameterList() + self.compileSymbol()
+        xmlstr += self.compileSubroutineBody()
+        xmlstr += '''</subroutineDec>
+        '''
+        print self.tokenlist[self.token_number-1][1]
+        return xmlstr
+    def compileSubroutineBody(self):
+        xmlstr = '''<subroutineBody>
+        ''' + self.compileSymbol()
+        while (self.indicateToken() == 'static') or (self.indicateToken() == 'field'):
+            xmlstr += self.compileVarDec()
+        xmlstr += self.compileStatements() + self.compileSymbol()
+        xmlstr += '''</subroutineBody>
         '''
         return xmlstr
     def compileParameterList(self):
         xmlstr = '''<parameterList>
         '''
         if self.indicateToken() != ')':
-            xmlstr += self.compileType() + '<identifier> ' + self.useToken() + '''</identifier>
-            '''
+            xmlstr += self.compileType() + self.compileIdentifier()
         while self.indicateToken() != ')':
             print "Woohoo!"
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            ''' + self.compileType() + '<identifier> '  + self.useToken() + '''</identifier>
-            '''
+            xmlstr += self.compileSymbol() + self.compileType() + self.compileIdentifier()
         xmlstr += '''</parameterList>
         '''
         return xmlstr
     def compileVarDec(self):
         xmlstr = '''<varDec>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        ''' + self.compileType() + '<identifier> ' + self.useToken() + ''' </identifier>
-        '''
+        ''' + self.compileKeyword() + self.compileType() + self.compileIdentifier()
         while self.indicateToken() != ';':
             print "Doops?"
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            <identifier> ''' + self.useToken() + ''' </identifier>
-            '''
-        xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-        </varDec>
+            xmlstr += self.compileSymbol() + self.compileIdentifier()
+        if self.indicateToken() != ';':
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+        xmlstr += self.compileSymbol()
+        xmlstr += '''</varDec>
         '''
         return xmlstr
     def compileStatements(self):
         xmlstr = '''<statements>
         '''
+        while self.indicateToken() == 'var':
+            xmlstr = self.compileVarDec()
         while self.indicateToken() != '}':
-            print self.token_number, self.indicateToken()
+            print self.token_number, self.indicateToken(), 'TEST3'
             if self.indicateToken() == 'let':
                 xmlstr += self.compileLet()
             elif self.indicateToken() == 'if':
+                print ''' THIS
+                SHOULD
+                BE
+                OBVIOUS
+                '''
                 xmlstr += self.compileIf()
             elif self.indicateToken() == 'while':
                 xmlstr += self.compileWhile()
@@ -235,65 +267,53 @@ class CompilationEngine:
                 xmlstr += self.compileDo()
             elif self.indicateToken() == 'return':
                 xmlstr += self.compileReturn()
+            else:
+                print 5 / 0
         xmlstr += '''</statements>
         '''
         return xmlstr
     def compileDo(self):
         xmlstr = '''<doStatement>
-        <keyword> ''' + self.useToken() + '''</keyword>
-        ''' + self.compileTerm() + '<symbol> ' + self.useToken() + ''' </symbol>
-        </doStatement>
+        ''' + self.compileKeyword() + self.compileTerm()
+        if self.indicateToken() != ';':
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())        
+        xmlstr += self.compileSymbol() + '''</doStatement>
         '''
         return xmlstr
     def compileLet(self):
         xmlstr = '''<letStatement>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        <identifier> ''' + self.useToken() + ''' </identifier>
-        '''
+        ''' + self.compileKeyword() + self.compileIdentifier()
         print self.indicateToken()
         if self.indicateToken() != '=':
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
-            '''
-        xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-        ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
-        </letStatement>
+            xmlstr += self.compileSymbol() + self.compileExpression() + self.compileSymbol()
+        xmlstr += self.compileSymbol() + self.compileExpression()
+        if self.indicateToken() != ';':
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+        xmlstr += self.compileSymbol() + '''</letStatement>
         '''
         return xmlstr
     def compileWhile(self):
         xmlstr = '''<whileStatement>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        <symbol> ''' + self.useToken() + ''' </symbol>
-        ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
-        <symbol> ''' + self.useToken() + ''' </symbol
-        ''' + self.compileStatements() + '<symbol> ' + self.useToken() + ''' </symbol>
-        </whileStatement>
+        ''' + self.compileKeyword() + self.compileSymbol() + self.compileExpression() + self.compileSymbol() + self.compileSymbol() + self.compileStatements() + self.compileSymbol() + '''</whileStatement>
         '''
         return xmlstr
     def compileReturn(self):
         xmlstr = '''<returnStatement>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        <symbol> ''' + self.useToken() + ''' </symbol>
-        '''
+        ''' + self.compileKeyword()
         if self.indicateToken() != ';':
-            self.compileExpression()
-        xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-        </returnStatement>'''
+            xmlstr += self.compileExpression()
+        if self.indicateToken() != ';':
+            raise RuntimeError("Unexpected token %r" %self.indicateToken())
+        xmlstr += self.compileSymbol() + '''</returnStatement>
+        '''
         return xmlstr
     def compileIf(self):
         xmlstr = '''<ifStatement>
-        <keyword> ''' + self.useToken() + ''' </keyword>
-        <symbol> ''' + self.useToken() + ''' </symbol>
-        ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
-        <symbol> ''' + self.useToken() + ''' </symbol>
-        ''' + self.compileStatements() + '<symbol> ' + self.useToken() + ''' </symbol>
-        '''
+        ''' + self.compileKeyword() + self.compileSymbol() + self.compileExpression() + self.compileSymbol() + self.compileSymbol() + self.compileStatements() + self.compileSymbol()
         if self.indicateToken() == 'else':
-            xmlstr += '<keyword> ' + self.useToken() + ''' </keyword>
-            <symbol> ''' + self.useToken() + ''' </symbol>
-            ''' + self.compileStatements() + '<symbol> ' + self.useToken() + ''' </symbol>
-            <symbol> ''' + self.useToken() + ''' </symbol>
-            '''
+            xmlstr += '''<whileStatement>
+        ''' + self.compileKeyword() + self.compileExpression() + self.compileSymbol() + self.compileSymbol() + self.compileStatements() + self.compileSymbol()
+        print self.indicateToken(), "WKTJKJTHKEHTJKRHKDNFKMNMCMN"
         xmlstr += '''</ifStatement>
         '''
         return xmlstr
@@ -302,60 +322,46 @@ class CompilationEngine:
         ''' + self.compileTerm()
         while self.indicateToken() in self.ops:
             print "o_0"
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            ''' + self.compileTerm()
+            xmlstr += self.compileSymbol() + self.compileTerm()
         xmlstr += '''</expression>
         '''
         return xmlstr
     def compileTerm(self):
         xmlstr = '''<term>
         '''
+        print self.getTokenType()
+        print type(self.getTokenType())
         if self.getTokenType() == 'INT_CONST':
-            xmlstr += '<integerConstant> ' + self.useToken() + ''' </integerConstant>
-            '''
+            xmlstr += self.compileIntegerConstant()
         elif self.getTokenType() == 'STRING_CONST':
-            xmlstr += '<stringConstant> ' + self.useToken() + ''' </stringConstant>
-            '''
-        elif self.indicateToken() in self.keywordConstants:
-            xmlstr += '<keyword> ' + self.useToken() + ''' </keyword>
-            '''
+            xmlstr += self.compileStringConstant()
+        elif self.getTokenType() == 'KEYWORD':
+            print "THIS SHOULD BE OBVIOUS"
+            xmlstr += self.compileKeyword()
         elif self.getTokenType() == 'IDENTIFIER':
-            xmlstr += '<identifier> ' + self.useToken() + ''' </identifier>
-            '''
+            xmlstr += self.compileIdentifier()
             if self.indicateToken() == '[':
-                xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-                ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
-                '''
+                xmlstr += self.compileSymbol() + self.compileExpression() + self.compileSymbol()
             elif self.indicateToken() == '(':
-                xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-                ''' + self.compileExpressionList() + '<symbol> ' + self.useToken() + ''' </symbol>
-                '''
+                xmlstr += self.compileSymbol() + self.compileExpressionList() + self.compileSymbol()
             elif self.indicateToken() == '.':
-                xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-                <identifier> ''' + self.useToken() + ''' </identifier>
-                <symbol ''' + self.useToken() + ''' </symbol>
-                ''' + self.compileExpressionList() + '<symbol> ' + self.useToken() + ''' </symbol>
-                '''
+                xmlstr += self.compileSymbol() + self.compileIdentifier() + self.compileSymbol() + self.compileExpressionList() + self.compileSymbol()
         elif self.indicateToken() == '(':
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            ''' + self.compileExpression() + '<symbol> ' + self.useToken() + ''' </symbol>
-            '''
-        elif self.indicateToken() in self.unaryOps:
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            ''' + self.compileTerm()
+            xmlstr += self.compileSymbol() + self.compileExpression() + self.compileSymbol()
+        elif (self.indicateToken() == '-') or (self.indicateToken() == '~'):
+            xmlstr += self.compileSymbol() + self.compileTerm()
         xmlstr += '''</term>
         '''
         return xmlstr
     def compileExpressionList(self):
-        xmlstr = '''<parameterList>
+        xmlstr = '''<expressionList>
         '''
         if self.indicateToken() != ')':
             xmlstr += self.compileExpression()
         while self.indicateToken() != ')':
             print ["l", "i", "s", "t"]
-            xmlstr += '<symbol> ' + self.useToken() + ''' </symbol>
-            ''' + self.compileExpression()
-        xmlstr += '''</parameterList>
+            xmlstr += self.compileSymbol() + self.compileExpression()
+        xmlstr += '''</expressionList>
         '''
         return xmlstr
 
@@ -385,8 +391,9 @@ def tokenize(file):
     compilation = CompilationEngine(tokenizer.tokens, "asdf")
     print compilation.compileClass()
     
+    
 print "Hello! We are sdalfkjsdlfsad"    
 tokenize("Square.jack")
-tokenize("SquareGame.jack")
-tokenize("Main.jack") 
+#tokenize("SquareGame.jack")
+#tokenize("Main.jack") 
 
