@@ -1,6 +1,6 @@
 
 # Jack to VM compiler Python program
-# by pikapike
+# by Isaac Li
 
 # import compiler-related stuff
 
@@ -108,21 +108,39 @@ class JackTokenizer:
         return str(self.token[1])
 
 class CompilationEngine:
-    def __init__(self, tokenlist, outputfile):
+    def __init__(self, tokenlist, outputfile, symbol_table):
         self.tokenlist = tokenlist
+        print len(self.tokenlist)
         self.outfile = outputfile
         self.token_number = 0
         self.ops = ('+', '-', '*', '/', '&', '|', '<', '>', '=')
         self.unaryOps = ('-', '~')
         self.keywordConstants = ('true', 'false', 'null', 'this')
+        self.kindKeyword = ''
+        self.subroutineKeyword = ''
+        self.previousKeyword = ''
+        self.lastlastKeyword = ''
+        self.lastToken = ''
+        self.token_after_kind = ''
+        self.lastTokenType = ''
+        self.symbol_table = symbol_table
+        self.arg_list = False
+        self.id_list = False
+        self.className = ''
+        self.lastlastToken = ''
     def useToken(self):
         while (self.tokenlist[self.token_number][0] == 'NEWLINE') or (self.tokenlist[self.token_number][0] == 'SKIP'):
             self.token_number += 1
             print "skip!"
-        token = (self.tokenlist[self.token_number][1], 0)
-        print token[0], self.token_number
+        token = self.tokenlist[self.token_number][1]
+        self.lastTokenType = self.tokenlist[self.token_number][0]
+        if (self.lastToken == 'static') or (self.lastToken == 'field') or (self.lastToken == 'var'):
+            self.token_after_kind = token
+        self.lastlastToken = self.lastToken
+        self.lastToken = token
+        print token, self.token_number, len(self.tokenlist)
         self.token_number += 1
-        return token[0]
+        return token
     def indicateToken(self):
         while (self.tokenlist[self.token_number][0] == 'NEWLINE') or (self.tokenlist[self.token_number][0] == 'SKIP'):
             self.token_number += 1
@@ -139,13 +157,69 @@ class CompilationEngine:
         return self.indicateToken() == string
     def compileKeyword(self):
         if self.getTokenType() == 'KEYWORD':
+            self.lastlastKeyword = self.previousKeyword            
+            self.previousKeyword = self.indicateToken()
+            if (self.indicateToken() == 'static') or (self.indicateToken() == 'field') or (self.indicateToken() == 'var'):
+                self.kindKeyword = self.indicateToken()
+            if (self.indicateToken() == 'constructor') or (self.indicateToken() == 'method') or (self.indicateToken() == 'function'):
+                self.subroutineKeyword = self.indicateToken()
             return '<keyword> ' + self.useToken() + ''' </keyword>
             '''
         else:
             raise RuntimeError("Unexpected token %r" %self.indicateToken())
     def compileIdentifier(self):
         if self.getTokenType() == 'IDENTIFIER':
-            return '<identifier> ' + self.useToken() + ''' </identifier>
+            if self.symbol_table.kindOf(self.indicateToken()) == 'NONE':
+                print self.previousKeyword, self.symbol_table.scope, self.symbol_table.name_list, self.symbol_table.name_method_list
+                if ((self.lastlastToken == 'static') or (self.lastlastToken == 'field') or (self.lastlastToken == 'var')):
+                    condition = '<defined>'
+                    kind = self.kindKeyword
+                    self.symbol_table.define(self.indicateToken(), self.lastToken, kind)
+                    index = self.symbol_table.indexOf(self.indicateToken())
+                    print "yay"
+                elif self.arg_list == True:
+                    condition = '<defined>'
+                    kind = 'argument'
+                    self.symbol_table.define(self.indicateToken(), self.lastToken, 'arg')
+                    index = self.symbol_table.indexOf(self.indicateToken())
+                elif self.id_list == True:
+                    condition = '<defined>'
+                    kind = self.kindKeyword
+                    print "t"
+                    self.symbol_table.define(self.indicateToken(), self.token_after_kind, kind)
+                    print "wh"
+                    index = self.symbol_table.indexOf(self.indicateToken())
+                    print "techno music"
+                else:
+                    if self.previousKeyword == 'class':
+                        kind = 'class'
+                        condition = '<defined>'
+                    elif self.tokenlist[self.token_number + 1][1] == ".":
+                        kind = 'class'
+                        condition = '<used>'
+                    elif self.lastToken == self.previousKeyword:
+                        kind = 'class'
+                        condition = '<used>'
+                    elif self.lastTokenType == 'IDENTIFIER':
+                        kind = 'subroutine'
+                        condition = '<defined>'
+                    elif (self.lastToken == 'void') or (self.lastToken == 'int') or (self.lastToken == 'char') or (self.lastToken == 'boolean'):
+                        kind = 'subroutine'
+                        condition = '<defined>'
+                    elif self.previousKeyword == 'do':
+                        kind = 'subroutine'
+                        condition = '<used>'
+                    elif self.lastToken == '.':
+                        kind = 'subroutine'
+                        condition = '<used>'
+                    index = 'none'
+            else:
+                condition = '<used>'
+                kind = self.symbol_table.kindOf(self.indicateToken())
+                index = self.symbol_table.indexOf(self.indicateToken())
+            print '<identifier>'+ condition +'<'+ kind + '><'+ str(index) + '> ' + self.indicateToken() + ''' </identifier>
+            '''
+            return '<identifier>'+ condition +'<'+ kind + '><'+ str(index) + '> ' + self.useToken() + ''' </identifier>
             '''
         else:
             raise RuntimeError("Unexpected token %r" %self.indicateToken())
@@ -175,11 +249,18 @@ class CompilationEngine:
         else:
             raise RuntimeError("Unexpected token %r" %self.indicateToken())
     def compileClass(self):
+        self.className = self.indicateToken()
         xmlstr = '''<class>
-        ''' + self.compileKeyword() + self.compileIdentifier() + self.compileSymbol()
+        '''
+        print 1
+        xmlstr += self.compileKeyword()
+        print 2
+        xmlstr += self.compileIdentifier()
+        print 3
+        xmlstr += self.compileSymbol()
         print self.token_number
         while self.indicateToken() != '}':
-            print "I know you're endless looping!!!"
+            print "I know you're endless looping!!! ", self.getTokenType()
             if (self.boolToken('constructor')) or (self.boolToken('function')) or (self.boolToken('method')):
                 xmlstr += self.compileSubroutine()
             elif (self.boolToken('field')) or (self.boolToken('static')):
@@ -192,23 +273,33 @@ class CompilationEngine:
     def compileClassVarDec(self):
         xmlstr = '''<classVarDec>
         ''' + self.compileKeyword() + self.compileType() + self.compileIdentifier()
+        self.id_list = True
         while self.indicateToken() != ';':
             print "Cuckoo!"
             xmlstr += self.compileSymbol() + self.compileIdentifier()
         if self.indicateToken() != ';':
             raise RuntimeError("Unexpected token %r" %self.indicateToken())
+        self.id_list = False
         xmlstr += self.compileSymbol() + '''</classVarDec>
         '''
         return xmlstr
     def compileSubroutine(self):
         xmlstr = '''<subroutineDec>
         ''' + self.compileKeyword()
+        self.symbol_table.startSubroutine()
         if self.indicateToken() == 'void':
             xmlstr += self.compileKeyword()
         else:
             xmlstr += self.compileType()
-        xmlstr += self.compileIdentifier() + self.compileSymbol() + self.compileParameterList() + self.compileSymbol()
+        xmlstr += self.compileIdentifier() 
+        self.symbol_table.switchScope()
+        xmlstr += self.compileSymbol()
+        self.arg_list = True
+        self.symbol_table.define('this', self.className, 'arg')
+        xmlstr += self.compileParameterList() + self.compileSymbol()
+        self.arg_list = False
         xmlstr += self.compileSubroutineBody()
+        self.symbol_table.switchScope()
         xmlstr += '''</subroutineDec>
         '''
         print self.tokenlist[self.token_number-1][1]
@@ -364,8 +455,135 @@ class CompilationEngine:
         xmlstr += '''</expressionList>
         '''
         return xmlstr
+        
+class SymbolTable:
+    def __init__(self):
+        self.name_list = []
+        self.type_list = []
+        self.kind_list = []
+        self.index_list = []
+        self.name_method_list = []
+        self.type_method_list = []
+        self.kind_method_list = []
+        self.index_method_list = []
+        self.static_index = 0
+        self.field_index = 0
+        self.argument_index = 0
+        self.var_index = 0
+        self.scope = False # false for class-scope, true for method scope
+    def startSubroutine(self):
+        self.name_method_list = []
+        self.type_method_list = []
+        self.kind_method_list = []
+        self.index_method_list = []
+        self.argument_index = 0
+        self.var_index = 0
+    def switchScope(self):
+        self.scope = not(self.scope)
+    def define(self, name, type, kind):
+        if (kind == "static") or (kind == "field"):
+            self.name_list.append(name)
+            self.type_list.append(type)
+            self.kind_list.append(kind)
+            if type == "static":
+                number = self.static_index
+                self.static_index += 1
+            else:
+                number = self.field_index
+                self.field_index += 1
+            self.index_list.append(number)
+        elif (kind == "arg") or (kind == "var"):
+            self.name_method_list.append(name)
+            self.type_method_list.append(type)
+            self.kind_method_list.append(kind)
+            if type == "arg":
+                number = self.argument_index
+                self.argument_index += 1
+            else:
+                number = self.var_index
+                self.var_index += 1
+            self.index_method_list.append(number)
+        else:
+            raise RuntimeError("Invalid type: %r" %(type))
+    def varCount(self, kind):
+        if kind == "static":
+            return self.static_index
+        if kind == "field":
+            return self.field_index
+        if kind == "arg":
+            return self.argument_index
+        if kind == "var":
+            return self.var_index
+        else:
+            raise RuntimeError("Invalid type: %r" %(type))
+    def kindOf(self, name):
+        some_number = -1
+        if self.scope == True:
+            i = 0
+            while i < len(self.name_method_list):
+                if name == self.name_method_list[i]:
+                    some_number = i
+                i += 1
+            if some_number == -1:
+                pass
+            else:
+                return self.kind_method_list[some_number]
+        if True:
+            i = 0
+            while i < len(self.name_list):
+                if name == self.name_list[i]:
+                    some_number = i
+                i += 1
+            if some_number == -1:
+                return "NONE"
+            else:
+                return self.kind_list[some_number]
+    def typeOf(self, name):
+        some_number = -1
+        if self.scope == True:
+            i = 0
+            while i < len(self.name_method_list):
+                if name == self.name_method_list[i]:
+                    some_number = i
+                i += 1
+            if some_number == -1:
+                pass
+            else:
+                return self.type_method_list[some_number]
+        if True:
+            i = 0
+            while i < len(self.name_list):
+                if name == self.name_list[i]:
+                    some_number = i
+                i += 1
+            if some_number == -1:
+                return ""
+            else:
+                return self.type_list[some_number]
+    def indexOf(self, name):
+        some_number = -1
+        if self.scope == True:
+            i = 0
+            while i < len(self.name_method_list):
+                if name == self.name_method_list[i]:
+                    some_number = i
+                i += 1
+            if some_number == -1:
+                pass
+            else:
+                return self.index_method_list[some_number]
+        if True:
+            i = 0
+            while i < len(self.name_list):
+                if name == self.name_list[i]:
+                    some_number = i
+                i += 1
+            if some_number == -1:
+                return "NONE"
+            else:
+                return self.index_list[some_number]
 
-def tokenize(file):
+def tokenize(file, outputfile):
     print "StartTest"
     tokenizer = JackTokenizer(file)
     print "TEST0"
@@ -388,12 +606,16 @@ def tokenize(file):
         if tokenizer.tokenType() == 'STRING_CONST':
             print tokenizer.stringVal()
         advancing = tokenizer.advance()
-    compilation = CompilationEngine(tokenizer.tokens, "asdf")
+    outfile = open(outputfile, "w+")
+    symbol_table = SymbolTable()
+    compilation = CompilationEngine(tokenizer.tokens, outfile, symbol_table)
     print compilation.compileClass()
+    #outfile.write(compilation.compileClass())
+    outfile.close()
     
     
 print "Hello! We are sdalfkjsdlfsad"    
-tokenize("Square.jack")
-#tokenize("SquareGame.jack")
-#tokenize("Main.jack") 
+tokenize("Square.jack", "Square.xml")
+#tokenize("SquareGame.jack", "SquareGame.xml")
+#tokenize("Main.jack", "Main_generated.xml") 
 
